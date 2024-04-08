@@ -109,7 +109,7 @@ export const simple: IAssembler = {
         let rd = comp.renderData;
         if (!rd) {
             const useTint = comp.useTint || comp.isAnimationCached();
-            const accessor = this.ensureAccessor(useTint) as StaticVBAccessor;
+                const accessor = this.ensureAccessor(useTint) as StaticVBAccessor;    
             rd = RenderData.add(useTint ? vfmtPosUvTwoColor4B : vfmtPosUvColor4B, accessor);
         }
         return rd;
@@ -117,7 +117,7 @@ export const simple: IAssembler = {
 
     updateRenderData (comp: Skeleton, batcher: Batcher2D) {
         const skeleton = comp._skeleton;
-        if (skeleton) {
+        if (skeleton && comp.node.active && comp.skeletonData?.isValid) {
             updateComponentRenderData(comp, batcher);
         }
     },
@@ -168,39 +168,40 @@ function realTimeTraverse (comp: Skeleton): void {
     const chunkOffset = rd.chunk.vertexOffset;
     for (let i0 = 0; i0 < ic; i0++) ibuf[i0] += chunkOffset;
 
+    //@ts-ignore
+    const skeletonSystem = cc.internal.SpineSkeletonSystem.getInstance();
+    let indexOffset = skeletonSystem.getIndexOffset(rd.accessor);
+    const subIndices = rd.indices!.subarray(0, ic);
+    rd.accessor.appendIndices(rd.chunk.bufferId, subIndices);
     const data = model.getData();
     const slotNameArray = model.getAttachedSlotName();
     const count = data.size();
-    let indexOffset = 0;
     let indexCount = 0;
     let slotIndex = 0;
     for (let i1 = 0; i1 < count; i1 += 6, slotIndex++) {
-        if (slotNameArray.size() > 0) {
-            if (i1 >= 6) {
-                const data = comp.drawList.add();
-                //@ts-ignore
-                data.type = "attachment";
-                //@ts-ignore
-                data.value = slotNameArray.get( i1 / 6 - 1);
-            }
+        const slotName = slotNameArray.get(i1/6);
+        if (slotName) {
+            const data = comp.drawList.add();
+            //@ts-ignore
+            data.type = 'attachment';
+            //@ts-ignore
+            data.value = slotName;
         }
-
-    // for (let i = 0; i < count; i += 6) {
         indexCount = data.get(i1 + 3);
         const material = _getSlotMaterial(data.get(i1 + 4), comp);
         const textureID: number = data.get(i1 + 5);
         comp.requestDrawData(material, textureID, indexOffset, indexCount);
         indexOffset += indexCount;
     }
-    if (slotNameArray.size() - count /6 >= 0) {
+    skeletonSystem.setIndexOffset(rd.accessor, indexOffset);
+    const slotName = slotNameArray.get(count / 6);
+    if (slotName) {
         const data = comp.drawList.add();
         //@ts-ignore
         data.type = 'attachment';
         //@ts-ignore
-        data.value = slotNameArray.get(0);
+        data.value = slotName;
     }
-
-
     // if enableBatch apply worldMatrix
     if (comp.enableBatch) {
         const worldMat = comp.node.worldMatrix;
@@ -332,17 +333,40 @@ function cacheTraverse (comp: Skeleton): void {
         iUint16Buf[i] += chunkOffset;
     }
 
+    rd.accessor.appendIndices(rd.chunk.bufferId, iUint16Buf);
+    //@ts-ignore
+    const skeletonSystem = cc.internal.SpineSkeletonSystem.getInstance();
+    let indexOffset = skeletonSystem.getIndexOffset(rd.accessor);
+
+    const slotNameArray = model.slotNames;
     const meshes = model.meshes;
     const count = meshes.length;
-    let indexOffset = 0;
+    // let indexOffset = 0;
     let indexCount = 0;
     for (let i = 0; i < count; i++) {
+        const slotName = slotNameArray.get(i);
+        if (slotName) {
+            const data = comp.drawList.add();
+            //@ts-ignore
+            data.type = 'attachment';
+            //@ts-ignore
+            data.value = slotName;
+        }
         const mesh = meshes[i];
         const material = _getSlotMaterial(mesh.blendMode as number, comp);
         const textureID = mesh.textureID;
         indexCount = mesh.iCount;
         comp.requestDrawData(material, textureID as number, indexOffset, indexCount);
         indexOffset += indexCount;
+    }
+    skeletonSystem.setIndexOffset(rd.accessor, indexOffset);
+    const slotName = slotNameArray.get(count);
+    if (slotName) {
+        const data = comp.drawList.add();
+        //@ts-ignore
+        data.type = 'attachment';
+        //@ts-ignore
+        data.value = slotName;
     }
 
     const floatStride = _byteStrideTwoColor / Float32Array.BYTES_PER_ELEMENT;

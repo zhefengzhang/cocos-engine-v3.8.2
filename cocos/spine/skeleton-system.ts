@@ -28,6 +28,7 @@ import { System } from '../core';
 import { Skeleton } from './skeleton';
 import { legacyCC } from '../core/global-exports';
 import spine from './lib/spine-core.js';
+import { StaticVBAccessor } from '../2d/renderer/static-vb-accessor';
 
 export class SkeletonSystem extends System {
     /**
@@ -39,6 +40,8 @@ export class SkeletonSystem extends System {
     static readonly ID = 'SKELETON';
 
     private static _instance: SkeletonSystem;
+
+    private _accessorIndexOffsetMap = new Map<StaticVBAccessor, number>();
 
     private constructor () {
         super();
@@ -74,9 +77,22 @@ export class SkeletonSystem extends System {
         }
     }
 
+    public setIndexOffset(accessor: StaticVBAccessor, offset: number) {
+        this._accessorIndexOffsetMap.set(accessor, offset);
+    }
+
+    public getIndexOffset(accessor: StaticVBAccessor): number {
+        return this._accessorIndexOffsetMap.get(accessor) || 0;
+    }
+
     postUpdate (dt: number): void {
         if (!this._skeletons) {
             return;
+        }
+        if (!JSB) {
+            this._accessorIndexOffsetMap.forEach((offset, accessor) => {
+                this._accessorIndexOffsetMap.set(accessor, 0);
+            });
         }
         this._skeletons.forEach((skeleton) => {
             skeleton.updateAnimation(dt);

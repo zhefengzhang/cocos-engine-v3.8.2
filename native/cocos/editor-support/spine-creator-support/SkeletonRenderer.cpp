@@ -333,6 +333,9 @@ void SkeletonRenderer::render(float /*deltaTime*/) {
             curDrawInfo->setIbCount(curISegLen);
         }
         curDrawInfo = requestDrawInfo(materialLen);
+        curDrawInfo->setIbCount(0);
+        curDrawInfo->setDrawInfoType(static_cast<uint32_t>(RenderDrawInfoType::MIDDLEWARE));
+        curDrawInfo->setAttachNode(nullptr);
         entity->addDynamicRenderDrawInfo(curDrawInfo);
         // prepare to fill new segment field
         curBlendMode = slot->getData().getBlendMode();

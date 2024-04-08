@@ -782,10 +782,7 @@ export class Batcher2D implements IBatcher {
         this._currMaterial = mat;
     }
 
-    public walk (node: Node, level = 0, forceWalk = false): void {
-        // if (node.name === "player") {
-        //     console.log("123");
-        // }
+    public walk (node: Node, level = 0): void {
         if (!node.activeInHierarchy) {
             return;
         }
@@ -809,7 +806,7 @@ export class Batcher2D implements IBatcher {
 
             // Render assembler update logic
             //@ts-ignore
-            if (render && render.enabledInHierarchy && (!node.__skipWalk || forceWalk)) {
+            if (render && render.enabledInHierarchy && !node.__skipWalk) {
                 render.fillBuffers(this);// for rendering
             }
 
@@ -823,7 +820,7 @@ export class Batcher2D implements IBatcher {
                 }
             }
             //@ts-ignore
-            if (children.length > 0 && !node._static && (!node.__skipWalk || forceWalk)) {
+            if (children.length > 0 && !node._static && !node.__skipWalk) {
                 for (let i = 0; i < children.length; ++i) {
                     const child = children[i];
                     this.walk(child, level);

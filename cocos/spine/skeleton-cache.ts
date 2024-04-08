@@ -62,6 +62,7 @@ class SpineModel {
     public vData: Uint8Array = null!;
     public iData: Uint16Array = null!;
     public meshes: SpineDrawItem[] = [];
+    public slotNames: Map<number, string> = new Map();
 }
 
 class SpineDrawItem {
@@ -116,8 +117,16 @@ export class AnimationCache {
     }
 
     public setSkin (skinName: string): void {
-        if (this._skeleton) this._skeleton.setSkinByName(skinName);
-        this._instance!.setSkin(skinName);
+        if (skinName == "") {
+            return;
+        }
+        try {
+            if (this._skeleton) this._skeleton.setSkinByName(skinName);
+            this._instance!.setSkin(skinName);
+        } catch(e) {
+            warn(`set skin ${skinName} error: ${e}`);
+        }
+        
     }
 
     public setAnimation (animationName: string): void {
@@ -190,6 +199,7 @@ export class AnimationCache {
         modelData.vData = vUint8Buf;
         modelData.iData = iUint16Buf;
 
+        const slotNameArray = model.getAttachedSlotName();
         const data = model.getData();
         const count = data.size();
         for (let i = 0; i < count; i += 6) {
@@ -198,6 +208,14 @@ export class AnimationCache {
             meshData.blendMode = data.get(i + 4);
             meshData.textureID = data.get(i + 5);
             modelData.meshes.push(meshData);
+            const slotName = slotNameArray.get(i/6);
+            if (slotName) {
+                modelData.slotNames.set(i/6, slotName);
+            }
+        }
+        const slotName = slotNameArray.get(count/6);
+        if (slotName) {
+            modelData.slotNames.set(count/6, slotName);
         }
 
         const bones = this._skeleton.bones;

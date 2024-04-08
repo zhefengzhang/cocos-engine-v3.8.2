@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 import { EDITOR_NOT_IN_PREVIEW, JSB } from 'internal:constants';
-import { ccclass, executeInEditMode, help, menu, serializable, type, displayName, override, displayOrder, editable, tooltip } from 'cc.decorator';
+import { ccclass, executeInEditMode, help, menu, serializable, formerlySerializedAs, type, displayName, override, displayOrder, editable, tooltip } from 'cc.decorator';
 import { Material, Texture2D } from '../asset/assets';
 import { error, logID, warn } from '../core/platform/debug';
 import { Enum, EnumType, ccenum } from '../core/value-types/enum';
@@ -204,9 +204,11 @@ export class Skeleton extends UIRenderer {
     @serializable
     protected _skeletonData: SkeletonData | null = null;
     @serializable
-    protected defaultSkin = '';
+    @formerlySerializedAs('defaultSkin')
+    protected _defaultSkin = '';
     @serializable
-    protected defaultAnimation = '';
+    @formerlySerializedAs('defaultAnimation')
+    protected _defaultAnimation = '';
     /**
      * @en Indicates whether to enable premultiplied alpha.
      * You should disable this option when image's transparent area appears to have opaque pixels,
@@ -314,6 +316,8 @@ export class Skeleton extends UIRenderer {
     _model: any;
     _tempColor: TempColor = { r: 0, g: 0, b: 0, a: 0 };
 
+    private _slotBindingMap = new Map<string, Node>();
+
     constructor () {
         super();
         this._useVertexOpacity = true;
@@ -333,11 +337,14 @@ export class Skeleton extends UIRenderer {
         super.onLoad();
         if (this._instance) {
             //@ts-ignore
-            const tags: string[] = this.node.getComponents('NodeHolder')!.map((it) => it.tag);
-            //@ts-ignore
             const vecArray = this._instance.getAttachedSlotNames();
-            tags.forEach((tag, index) => {
-                vecArray.push_back(tag);
+            this.node.getComponents('NodeHolder').map((it) => {
+                    if (it.enabled) {
+                        //@ts-ignore
+                        vecArray.push_back(it.tag);
+                        //@ts-ignore
+                    this._slotBindingMap.set(it.tag, it.value);
+                    }
             });
             //@ts-ignore
             this._instance.setAttachedSlotNames(vecArray);
@@ -348,6 +355,14 @@ export class Skeleton extends UIRenderer {
      * @engineInternal
      */
     get drawList (): RecyclePool<SkeletonDrawData> { return this._drawList; }
+
+    get defaultSkin (): string {
+        return this._defaultSkin;
+    }
+
+    get defaultAnimation (): string {
+        return this._defaultAnimation;
+    }
 
     /**
      * @en
@@ -371,8 +386,8 @@ export class Skeleton extends UIRenderer {
         if (this._skeletonData !== value) {
             this.destroyRenderData();
             this._skeletonData = value as any;
-            this.defaultSkin = '';
-            this.defaultAnimation = '';
+            this._defaultSkin = '';
+            this._defaultAnimation = '';
             this._animationName = '';
             this._skinName = '';
             this._updateSkeletonData();
@@ -390,14 +405,14 @@ export class Skeleton extends UIRenderer {
         if (this.skeletonData) {
             const skinsEnum = this.skeletonData.getSkinsEnum();
             if (skinsEnum) {
-                if (this.defaultSkin === '') {
+                if (this._defaultSkin === '') {
                     // eslint-disable-next-line no-prototype-builtins
                     if (skinsEnum.hasOwnProperty(0)) {
                         this._defaultSkinIndex = 0;
                         return 0;
                     }
                 } else {
-                    const skinIndex = skinsEnum[this.defaultSkin];
+                    const skinIndex = skinsEnum[this._defaultSkin];
                     if (skinIndex !== undefined) {
                         return skinIndex;
                     }
@@ -421,8 +436,8 @@ export class Skeleton extends UIRenderer {
 
         const skinName = skinsEnum[value];
         if (skinName !== undefined) {
-            this.defaultSkin = String(skinName);
-            this.setSkin(this.defaultSkin);
+            this._defaultSkin = String(skinName);
+            this.setSkin(this._defaultSkin);
             this._refreshInspector();
             this.markForUpdateRenderData();
         } else {
@@ -438,7 +453,7 @@ export class Skeleton extends UIRenderer {
     @type(DefaultAnimsEnum)
     @tooltip('i18n:COMPONENT.skeleton.animation')
     get _animationIndex (): number {
-        const animationName = EDITOR_NOT_IN_PREVIEW ? this.defaultAnimation : this.animation;
+        const animationName = EDITOR_NOT_IN_PREVIEW ? this._defaultAnimation : this.animation;
         if (this.skeletonData) {
             if (animationName) {
                 const animsEnum = this.skeletonData.getAnimsEnum();
@@ -470,7 +485,7 @@ export class Skeleton extends UIRenderer {
         if (animName !== undefined) {
             this.animation = animName;
             if (EDITOR_NOT_IN_PREVIEW) {
-                this.defaultAnimation = animName;
+                this._defaultAnimation = animName;
                 this._refreshInspector();
             } else {
                 this.animation = animName;
@@ -780,8 +795,8 @@ export class Skeleton extends UIRenderer {
         this._textures = skeletonData.textures;
 
         this._refreshInspector();
-        if (this.defaultAnimation) this.animation = this.defaultAnimation.toString();
-        if (this.defaultSkin && this.defaultSkin !== '') this.setSkin(this.defaultSkin);
+        if (this._defaultAnimation) this.animation = this._defaultAnimation.toString();
+        if (this._defaultSkin && this._defaultSkin !== '') this.setSkin(this._defaultSkin);
         this._updateUseTint();
         this._indexBoneSockets();
         this._updateSocketBindings();
@@ -920,7 +935,6 @@ export class Skeleton extends UIRenderer {
                 return null;
             }
         }
-        
         let trackEntry: spine.TrackEntry | null = null;
         if (loop === undefined) loop = true;
         this._playTimes = loop ? 0 : 1;
@@ -1045,8 +1059,9 @@ export class Skeleton extends UIRenderer {
         this.markForUpdateRenderData();
         if (EDITOR_NOT_IN_PREVIEW) return;
         if (this.paused) return;
-        dt *= this._timeScale * timeScale;
         if (this.isAnimationCached()) {
+            // On realTime mode, dt is multiplied at native side.
+            dt *= this._timeScale * timeScale;
             if (this._isAniComplete) {
                 if (this._animationQueue.length === 0 && !this._headAniInfo) {
                     const frameCache = this._animCache;
@@ -1157,33 +1172,30 @@ export class Skeleton extends UIRenderer {
             const chunk = rd.chunk;
             const accessor = chunk.vertexAccessor;
             const meshBuffer = rd.getMeshBuffer()!;
-            const origin = meshBuffer.indexOffset;
+            const origin = 0;//meshBuffer.indexOffset;
             // Fill index buffer
             for (let i = 0; i < this._drawList.length; i++) {
                 const dc = this._drawList.data[i];
                 //@ts-ignore
                 if (dc.type === 'attachment') {
                     //@ts-ignore
-                    var obj = this.node.getComponents('NodeHolder').find((it: any) => it.tag === dc.value);
-                    if (!!obj) {
-                        batcher.walk(
-                            //@ts-ignore
-                            obj!.value,
-                            0,
-                            true,
-                        );
-                        // 如果找到了，则跳过本次循环
-                        continue;
+                    const attchNode = this._slotBindingMap.get(dc.value);
+                    if (attchNode) {
+                        //@ts-ignore
+                        attchNode.__skipWalk = false;
+                        batcher.walk(attchNode, 0);
+                        //@ts-ignore
+                        attchNode.__skipWalk = true;
                     }
-
+                    continue;
                 }
                 if (dc.texture) {
                     batcher.commitMiddleware(this, meshBuffer, origin + dc.indexOffset, dc.indexCount, dc.texture, dc.material!, this._enableBatch);
                 }
                 indicesCount += dc.indexCount;
             }
-            const subIndices = rd.indices!.subarray(0, indicesCount);
-            accessor.appendIndices(chunk.bufferId, subIndices);
+            // const subIndices = rd.indices!.subarray(0, indicesCount);
+            // accessor.appendIndices(chunk.bufferId, subIndices);
             accessor.getMeshBuffer(chunk.bufferId).setDirty();
         }
     }
@@ -1194,6 +1206,8 @@ export class Skeleton extends UIRenderer {
     public requestDrawData (material: Material, textureID: number, indexOffset: number, indexCount: number): SkeletonDrawData {
         const draw = this._drawList.add();
         draw.material = material;
+        //@ts-ignore
+        draw.type = 'draw';
         if (textureID < CUSTOM_SLOT_TEXTURE_BEGIN) {
             draw.texture = this._textures[textureID];
         } else {
